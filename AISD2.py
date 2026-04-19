@@ -985,92 +985,120 @@ def decompress_image_custom(src):
 def main():
     folder = r"C:\.Study\AISD\AISD_2.2_n2"
     os.makedirs(folder, exist_ok=True)
+
     src_pic = os.path.join(folder, "image.png")
+    if not os.path.exists(src_pic):
+        src_pic = os.path.join(folder, "Lena.png")
+
     color = Image.open(src_pic).convert('RGB')
     gray = color.convert('L')
     bw_simple = gray.convert('1', dither=Image.Dither.NONE)
     bw_fancy = color.convert('1')
-    gray.save(os.path.join(folder, 'grayscale.png'))
-    bw_simple.save(os.path.join(folder, 'bw_rounded.png'))
-    bw_fancy.save(os.path.join(folder, 'bw_dither.png'))
+
+    color.save(os.path.join(folder, '01_color.png'))
+    gray.save(os.path.join(folder, '02_grayscale.png'))
+    bw_simple.save(os.path.join(folder, '03_bw_no_dither.png'))
+    bw_fancy.save(os.path.join(folder, '04_bw_dither.png'))
 
     info_c = make_raw_copy(src_pic, os.path.join(folder, 'image.raw'))
-    info_g = make_raw_copy(os.path.join(folder, 'grayscale.png'), os.path.join(folder, 'grayscale.raw'))
-    info_b1 = make_raw_copy(os.path.join(folder, 'bw_rounded.png'), os.path.join(folder, 'bw_rounded.raw'))
-    info_b2 = make_raw_copy(os.path.join(folder, 'bw_dither.png'), os.path.join(folder, 'bw_dither.raw'))
+    info_g = make_raw_copy(os.path.join(folder, '02_grayscale.png'), os.path.join(folder, 'grayscale.raw'))
+    info_b1 = make_raw_copy(os.path.join(folder, '03_bw_no_dither.png'), os.path.join(folder, 'bw_rounded.raw'))
+    info_b2 = make_raw_copy(os.path.join(folder, '04_bw_dither.png'), os.path.join(folder, 'bw_dither.raw'))
 
     make_comparison_chart({
         'Color': info_c, 'Grayscale': info_g,
         'BW (no dither)': info_b1, 'BW (dither)': info_b2
-    }, os.path.join(folder, 'raw_comparison.png'))
+    }, os.path.join(folder, '05_raw_comparison.png'))
 
     ycbcr = change_colorspace_to_ycbcr(color)
-    ycbcr.save(os.path.join(folder, 'ycbcr.png'))
+    ycbcr.save(os.path.join(folder, '06_ycbcr.png'))
     rgb_again = change_colorspace_to_rgb(ycbcr)
-    rgb_again.save(os.path.join(folder, 'rgb_restored.png'))
+    rgb_again.save(os.path.join(folder, '07_rgb_restored.png'))
     store_picture_as_bytes(ycbcr, os.path.join(folder, 'ycbcr.raw'), 'YCbCr')
 
     small2, _ = shrink_picture(color, 2)
-    small2.save(os.path.join(folder, 'down_x2.png'))
+    small2.save(os.path.join(folder, '08_down_x2.png'))
     big2 = enlarge_picture(small2, 2, color.size)
-    big2.save(os.path.join(folder, 'up_x2.png'))
+    big2.save(os.path.join(folder, '09_up_x2.png'))
 
     small4, _ = shrink_picture(color, 4)
-    small4.save(os.path.join(folder, 'downsample_x4.png'))
+    small4.save(os.path.join(folder, '10_downsample_x4.png'))
     big4 = enlarge_picture(small4, 4, color.size)
-    big4.save(os.path.join(folder, 'upsample_from_x4.png'))
+    big4.save(os.path.join(folder, '11_upsample_from_x4.png'))
 
     half = change_picture_size(color, color.width // 2, color.height // 2)
-    half.save(os.path.join(folder, 'resize_half_bilinear.png'))
+    half.save(os.path.join(folder, '12_resize_half_bilinear.png'))
     back = change_picture_size(half, color.width, color.height)
-    back.save(os.path.join(folder, 'resize_back_bilinear.png'))
+    back.save(os.path.join(folder, '13_resize_back_bilinear.png'))
 
     gray_mat = picture_to_2d_list(gray)
     restored_mat = run_dct_on_picture(gray_mat, 8, 8, q_mat=None, use_matrix=False)
     restored_pic = list2d_to_picture(restored_mat)
-    restored_pic.save(os.path.join(folder, 'dct_restored.png'))
-    make_dct_side_by_side(gray, restored_pic, os.path.join(folder, 'dct_comparison.png'))
+    restored_pic.save(os.path.join(folder, '14_dct_restored.png'))
+    make_dct_side_by_side(gray, restored_pic, os.path.join(folder, '15_dct_comparison.png'))
 
-    imgs_for_plot = {'Lena': color, 'Color': color, 'Grayscale': gray,
-                     'BW_no_dither': bw_simple, 'BW_dither': bw_fancy}
+    imgs_for_plot = {
+        'Color': color,
+        'Grayscale': gray,
+        'BW_no_dither': bw_simple,
+        'BW_dither': bw_fancy
+    }
+
     all_sizes = {}
     q_vals = list(range(10, 100, 10))
-    saved_q10 = saved_q50 = saved_q90 = None
+
+    decompressed_folder = os.path.join(folder, 'decompressed')
+    compressed_folder = os.path.join(folder, 'compressed')
+    side_by_side_folder = os.path.join(folder, 'side_by_side')
+    os.makedirs(decompressed_folder, exist_ok=True)
+    os.makedirs(compressed_folder, exist_ok=True)
+    os.makedirs(side_by_side_folder, exist_ok=True)
+
+    saved_fragments = {}
 
     for nm, img in imgs_for_plot.items():
         sz_list = []
         for q in q_vals:
-            tmp = os.path.join(folder, f'__tmp_{nm}_q{q}.myjpg')
+            tmp = os.path.join(compressed_folder, f'{nm}_q{q}.myjpg')
             info = compress_image_custom(img, tmp, quality=q)
             sz_list.append(info['file_sz'])
+
+            restored_img, _ = decompress_image_custom(tmp)
+            restored_img.save(os.path.join(decompressed_folder, f'{nm}_q{q}.png'))
+
             if q in [10, 50, 90] and nm == 'Grayscale':
-                restored_img, _ = decompress_image_custom(tmp)
-                if q == 10:
-                    saved_q10 = restored_img
-                elif q == 50:
-                    saved_q50 = restored_img
-                elif q == 90:
-                    saved_q90 = restored_img
-            os.remove(tmp)
+                saved_fragments[q] = restored_img
+
+            w, h = img.size
+            comp = Image.new('RGB', (w * 2, h))
+            comp.paste(img.convert('RGB'), (0, 0))
+            comp.paste(restored_img.convert('RGB'), (w, 0))
+            comp.save(os.path.join(side_by_side_folder, f'{nm}_q{q}.png'))
+
         all_sizes[nm] = sz_list
 
-    make_quality_plot({'Lena': all_sizes['Lena']}, os.path.join(folder, 'quality_lena.png'), 'Quality vs Size for Lena')
-    make_quality_plot({'Color': all_sizes['Color']}, os.path.join(folder, 'quality_color.png'), 'Quality vs Size for Color')
-    make_quality_plot({'Grayscale': all_sizes['Grayscale']}, os.path.join(folder, 'quality_gray.png'), 'Quality vs Size for Grayscale')
-    make_quality_plot({'BW (no dither)': all_sizes['BW_no_dither']}, os.path.join(folder, 'quality_bw_no_dither.png'), 'Quality vs Size for BW (no dither)')
-    make_quality_plot({'BW (dither)': all_sizes['BW_dither']}, os.path.join(folder, 'quality_bw_dither.png'), 'Quality vs Size for BW (dither)')
+    make_quality_plot({'Color': all_sizes['Color']},
+                      os.path.join(folder, '16_quality_color.png'),
+                      'Quality vs Size for Color')
+    make_quality_plot({'Grayscale': all_sizes['Grayscale']},
+                      os.path.join(folder, '17_quality_gray.png'),
+                      'Quality vs Size for Grayscale')
+    make_quality_plot({'BW (no dither)': all_sizes['BW_no_dither']},
+                      os.path.join(folder, '18_quality_bw_no_dither.png'),
+                      'Quality vs Size for BW (no dither)')
+    make_quality_plot({'BW (dither)': all_sizes['BW_dither']},
+                      os.path.join(folder, '19_quality_bw_dither.png'),
+                      'Quality vs Size for BW (dither)')
 
-    make_side_by_side(gray, 10, folder)
-    make_side_by_side(gray, 50, folder)
-    make_side_by_side(gray, 90, folder)
+    if 10 in saved_fragments and 50 in saved_fragments and 90 in saved_fragments:
+        make_fragment_plot({'Q=10': saved_fragments[10],
+                            'Q=50': saved_fragments[50],
+                            'Q=90': saved_fragments[90]},
+                           os.path.join(folder, '20_fragments_comparison.png'))
 
-    if saved_q10 and saved_q50 and saved_q90:
-        make_fragment_plot({'Q=10': saved_q10, 'Q=50': saved_q50, 'Q=90': saved_q90},
-                           os.path.join(folder, 'fragments_comparison.png'))
-
-    compress_image_custom(gray, os.path.join(folder, 'compressed.myjpg'), quality=50)
-    decompressed, _ = decompress_image_custom(os.path.join(folder, 'compressed.myjpg'))
-    decompressed.save(os.path.join(folder, 'decompressed.png'))
+    compress_image_custom(gray, os.path.join(folder, '21_compressed.myjpg'), quality=50)
+    decompressed, _ = decompress_image_custom(os.path.join(folder, '21_compressed.myjpg'))
+    decompressed.save(os.path.join(folder, '22_decompressed_final.png'))
 
 
 if __name__ == '__main__':
